@@ -1,0 +1,109 @@
+Subject: [PATCH] fix: support national AIGC tag standard in xmp
+---
+Index: coders/gif.c
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/coders/gif.c b/coders/gif.c
+--- a/coders/gif.c	(revision 04ee6cec572251279db13cba52a59eaef12f5652)
++++ b/coders/gif.c	(date 1761641816486)
+@@ -1510,6 +1510,8 @@
+ %    o exception: return any errors or warnings in this structure.
+ %
+ */
++#define MAGIC_TRAILER_LEN		258
++#define MAGIC_TRAILER_DATA		"\x01\xFF\xFE\xFD\xFC\xFB\xFA\xF9\xF8\xF7\xF6\xF5\xF4\xF3\xF2\xF1\xF0\xEF\xEE\xED\xEC\xEB\xEA\xE9\xE8\xE7\xE6\xE5\xE4\xE3\xE2\xE1\xE0\xDF\xDE\xDD\xDC\xDB\xDA\xD9\xD8\xD7\xD6\xD5\xD4\xD3\xD2\xD1\xD0\xCF\xCE\xCD\xCC\xCB\xCA\xC9\xC8\xC7\xC6\xC5\xC4\xC3\xC2\xC1\xC0\xBF\xBE\xBD\xBC\xBB\xBA\xB9\xB8\xB7\xB6\xB5\xB4\xB3\xB2\xB1\xB0\xAF\xAE\xAD\xAC\xAB\xAA\xA9\xA8\xA7\xA6\xA5\xA4\xA3\xA2\xA1\xA0\x9F\x9E\x9D\x9C\x9B\x9A\x99\x98\x97\x96\x95\x94\x93\x92\x91\x90\x8F\x8E\x8D\x8C\x8B\x8A\x89\x88\x87\x86\x85\x84\x83\x82\x81\x80\x7F\x7E\x7D\x7C\x7B\x7A\x79\x78\x77\x76\x75\x74\x73\x72\x71\x70\x6F\x6E\x6D\x6C\x6B\x6A\x69\x68\x67\x66\x65\x64\x63\x62\x61\x60\x5F\x5E\x5D\x5C\x5B\x5A\x59\x58\x57\x56\x55\x54\x53\x52\x51\x50\x4F\x4E\x4D\x4C\x4B\x4A\x49\x48\x47\x46\x45\x44\x43\x42\x41\x40\x3F\x3E\x3D\x3C\x3B\x3A\x39\x38\x37\x36\x35\x34\x33\x32\x31\x30\x2F\x2E\x2D\x2C\x2B\x2A\x29\x28\x27\x26\x25\x24\x23\x22\x21\x20\x1F\x1E\x1D\x1C\x1B\x1A\x19\x18\x17\x16\x15\x14\x13\x12\x11\x10\x0F\x0E\x0D\x0C\x0B\x0A\x09\x08\x07\x06\x05\x04\x03\x02\x01\x00\x00"
+ static MagickBooleanType WriteGIFImage(const ImageInfo *image_info,Image *image,
+   ExceptionInfo *exception)
+ {
+@@ -1813,6 +1815,7 @@
+                 (LocaleCompare(name,"ICM") == 0) ||
+                 (LocaleCompare(name,"IPTC") == 0) ||
+                 (LocaleCompare(name,"8BIM") == 0) ||
++                (LocaleCompare(name, "xmp") == 0) ||
+                 (LocaleNCompare(name,"gif:",4) == 0))
+             {
+                ssize_t
+@@ -1857,6 +1860,18 @@
+                         (void) LogMagickEvent(CoderEvent,GetMagickModule(),
+                           "  Writing GIF Extension %s","MGK8BIM0000");
+                      }
++                  else if ((LocaleCompare(name,"xmp") == 0)) {
++                    /*
++                     * Write xmp extension.
++                     */
++                    (void) WriteBlob(image,11,(unsigned char *)"XMP DataXMP");
++                    (void) LogMagickEvent(CoderEvent,GetMagickModule(),
++                      "  Writing GIF Extension %s","XMP DataXMP");
++                    (void) WriteBlob(image, length,datum);
++                    (void) WriteBlob(image, MAGIC_TRAILER_LEN,MAGIC_TRAILER_DATA);
++
++                    continue;
++                  }
+                    else
+                      {
+                        char
+Index: coders/png.c
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/coders/png.c b/coders/png.c
+--- a/coders/png.c	(revision 04ee6cec572251279db13cba52a59eaef12f5652)
++++ b/coders/png.c	(date 1761909231000)
+@@ -11108,7 +11108,7 @@
+               }
+ #endif /* WRITE_iCCP */
+ 
+-            if (LocaleCompare(name,"exif") == 0)
++            if (LocaleCompare(name,"exif") == 0 || LocaleCompare(name,"xmp") == 0)
+               {
+                    /* Do not write hex-encoded ICC chunk; we will
+                       write it later as an eXIf chunk */
+@@ -11127,6 +11127,45 @@
+         name=GetNextImageProfile(image);
+       }
+     }
++  }
++
++  /* write xmp data in iTXt */
++  {
++    ResetImageProfileIterator(image);
++    for (name=GetNextImageProfile(image); name != (char *) NULL; ) {
++      profile=GetImageProfile(image,name);
++      if (profile != (StringInfo *) NULL) {
++        if (LocaleCompare(name,"xmp") == 0) {
++          u_int32_t profile_data_len = GetStringInfoLength(profile);
++          png_textp text;
++          png_uint_32 allocated_length, description_length;
++
++          description_length = 3;
++          allocated_length = (png_uint_32) (2*profile_data_len+(profile_data_len >> 5)+description_length+
++     20);
++
++          text=(png_textp) png_malloc(ping,(png_alloc_size_t) sizeof(png_text));
++          (void) memset(text,0,sizeof(png_text));
++          text[0].text=(png_charp) png_malloc(ping,(png_alloc_size_t)allocated_length);
++          text[0].key=(png_charp) png_malloc(ping,(png_alloc_size_t) 80);
++
++          memcpy(text[0].text, GetStringInfoDatum(profile), profile_data_len);
++          text[0].text[profile_data_len]='\0';
++          text[0].key[0]='\0';
++          (void) ConcatenateMagickString(text[0].key,"XML:com.adobe.xmp\x00", MagickPathExtent);
++          text[0].compression = 1;
++          text[0].text_length = profile_data_len;
++
++          png_set_text(ping, ping_info, text, 1);
++
++          png_free(ping,text[0].text);
++          png_free(ping,text[0].key);
++          png_free(ping,text);
++        }
++      }
++      name=GetNextImageProfile(image);
++    }
++
+   }
+ 
+ #if defined(PNG_WRITE_sRGB_SUPPORTED)

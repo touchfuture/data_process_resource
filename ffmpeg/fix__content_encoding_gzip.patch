@@ -1,0 +1,39 @@
+diff --git a/libavformat/http.c b/libavformat/http.c
+index fb2d9306bd..6e345a46f7 100644
+--- a/libavformat/http.c
++++ b/libavformat/http.c
+@@ -107,6 +107,7 @@ typedef struct HTTPContext {
+     AVDictionary *metadata;
+ #if CONFIG_ZLIB
+     int compressed;
++    int decompress_error_count;
+     z_stream inflate_stream;
+     uint8_t *inflate_buffer;
+ #endif /* CONFIG_ZLIB */
+@@ -1409,6 +1410,7 @@ static int http_connect(URLContext *h, const char *path, const char *local_path,
+     s->end_header       = 0;
+ #if CONFIG_ZLIB
+     s->compressed       = 0;
++    s->decompress_error_count = 0;
+ #endif
+     if (post && !s->post_data && !send_expect_100) {
+         /* Pretend that it did work. We didn't read any header yet, since
+@@ -1533,9 +1535,17 @@ static int http_buf_read_compressed(URLContext *h, uint8_t *buf, int size)
+     s->inflate_stream.next_out  = buf;
+ 
+     ret = inflate(&s->inflate_stream, Z_SYNC_FLUSH);
+-    if (ret != Z_OK && ret != Z_STREAM_END)
++    if (ret != Z_OK && ret != Z_STREAM_END) {
+         av_log(h, AV_LOG_WARNING, "inflate return value: %d, %s\n",
+                ret, s->inflate_stream.msg);
++        s->decompress_error_count += 1;
++    } else {
++        s->decompress_error_count = 0;
++    }
++    if (s->decompress_error_count >= 100) {
++        // return error if tried 100 times
++        return AVERROR_INVALIDDATA;
++    }
+ 
+     return size - s->inflate_stream.avail_out;
+ }

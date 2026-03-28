@@ -1,0 +1,17 @@
+Index: coders/png.c
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/coders/png.c b/coders/png.c
+--- a/coders/png.c	(revision 89ed3a846a1d2fbe866f891de3e0d16edf43a4e0)
++++ b/coders/png.c	(revision 7e53875836c3d8950b3f848600f0c6bd682fe7fe)
+@@ -449,7 +449,7 @@
+   setjmp/longjmp is alleged to be unsafe on these platforms:
+ */
+ #ifdef PNG_SETJMP_SUPPORTED
+-# ifndef SETJMP_IS_THREAD_SAFE
++# ifndef MAGICKCORE_SETJMP_IS_THREAD_SAFE
+ #   define IMPNG_SETJMP_NOT_THREAD_SAFE
+ # endif
+ 

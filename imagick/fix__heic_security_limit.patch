@@ -1,0 +1,102 @@
+Subject: [PATCH] fix: heic security limit
+---
+Index: coders/heic.c
+IDEA additional info:
+Subsystem: com.intellij.openapi.diff.impl.patch.CharsetEP
+<+>UTF-8
+===================================================================
+diff --git a/coders/heic.c b/coders/heic.c
+--- a/coders/heic.c	(revision 04ee6cec572251279db13cba52a59eaef12f5652)
++++ b/coders/heic.c	(date 1759213079457)
+@@ -68,6 +68,7 @@
+ #include "MagickCore/option.h"
+ #include "MagickCore/pixel-accessor.h"
+ #include "MagickCore/quantum-private.h"
++#include "MagickCore/resource_.h"
+ #include "MagickCore/static.h"
+ #include "MagickCore/string_.h"
+ #include "MagickCore/string-private.h"
+@@ -78,6 +79,8 @@
+ #include <heif.h>
+ #else
+ #include <libheif/heif.h>
++#define HEIC_COMPUTE_NUMERIC_VERSION(major,minor,patch) \
++(((major) << 24) | ((minor) << 16) | ((patch) << 8) | 0)
+ #endif
+ #endif
+ 
+@@ -127,6 +130,64 @@
+ %
+ */
+ 
++#if LIBHEIF_NUMERIC_VERSION >= HEIC_COMPUTE_NUMERIC_VERSION(1,19,0)
++static inline void HEICSetUint32SecurityLimit(const ImageInfo *image_info,
++  const char *name,uint32_t *value)
++{
++  const char
++    *option;
++
++  option=GetImageOption(image_info,name);
++  if (option == (const char*) NULL)
++    return;
++  *value=strtoul(option,(char **) NULL,10);
++}
++
++static inline void HEICSetUint64SecurityLimit(const ImageInfo *image_info,
++  const char *name,uint64_t *value)
++{
++  const char
++    *option;
++
++  option=GetImageOption(image_info,name);
++  if (option == (const char*) NULL)
++    return;
++  *value=strtoull(option,(char **) NULL,10);
++}
++
++static inline void HEICSecurityLimits(const ImageInfo *image_info,
++  struct heif_context *heif_context)
++{
++  int
++    height_limit,
++    width_limit;
++
++  struct heif_security_limits
++    *security_limits;
++
++  security_limits=heif_context_get_security_limits(heif_context);
++  width_limit=(int) MagickMin(GetMagickResourceLimit(HeightResource),INT_MAX);
++  height_limit=(int) MagickMin(GetMagickResourceLimit(WidthResource),INT_MAX);
++  if (width_limit != INT_MAX || height_limit != INT_MAX)
++    security_limits->max_image_size_pixels=(uint64_t) width_limit*height_limit;
++  security_limits->max_memory_block_size=(uint64_t) GetMaxMemoryRequest();
++  HEICSetUint64SecurityLimit(image_info,"heic:max-number-of-tiles",
++    &security_limits->max_number_of_tiles);
++  HEICSetUint32SecurityLimit(image_info,"heic:max-bayer-pattern-pixels",
++    &security_limits->max_bayer_pattern_pixels);
++  HEICSetUint32SecurityLimit(image_info,"heic:max-items",
++    &security_limits->max_items);
++  HEICSetUint32SecurityLimit(image_info,"heic:max-components",
++    &security_limits->max_components);
++  HEICSetUint32SecurityLimit(image_info,"heic:max-iloc-extents-per-item",
++    &security_limits->max_iloc_extents_per_item);
++  HEICSetUint32SecurityLimit(image_info,"heic:max-size-entity-group",
++    &security_limits->max_size_entity_group);
++  HEICSetUint32SecurityLimit(image_info,"heic:max-children-per-box",
++    &security_limits->max_children_per_box);
++}
++#endif
++
+ static inline MagickBooleanType IsHEIFSuccess(Image *image,
+   struct heif_error *error,ExceptionInfo *exception)
+ {
+@@ -517,6 +578,9 @@
+   heif_context=heif_context_alloc();
+   if (heif_context == (struct heif_context *) NULL)
+     ThrowReaderException(ResourceLimitError,"MemoryAllocationFailed");
++#if LIBHEIF_NUMERIC_VERSION >= HEIC_COMPUTE_NUMERIC_VERSION(1,19,0)
++  HEICSecurityLimits(image_info,heif_context);
++#endif
+   error=heif_context_read_from_file(heif_context,image->filename,
+     (const struct heif_reading_options *) NULL);
+   if (IsHEIFSuccess(image,&error,exception) == MagickFalse)
