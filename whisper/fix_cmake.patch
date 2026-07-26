@@ -1,0 +1,16 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 517f30bb..e068df5f 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -20,6 +20,11 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/")
+ 
+ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+ 
++# whisper 依赖了 std::filesystem，GCC 版本小于 9 时需要显式链接
++if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 9)
++    link_libraries(stdc++fs)
++endif()
++
+ if (CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
+     set(WHISPER_STANDALONE ON)
+ 

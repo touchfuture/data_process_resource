@@ -1,1 +1,3 @@
-# data_process_depend
+# resources
+
+字体文件以及imagick程序包
